@@ -1,0 +1,411 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>TimeMirror — Emotional Clock</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg-1: #0b0f1a; /* base night */
+      --bg-2: #141828; /* secondary */
+      --tone: 0,0,0; /* emotion tone rgb */
+      --time-tone: 30,144,255; /* time-based tone rgb */
+      --glass: rgba(255,255,255,0.06);
+      --glass-2: rgba(255,255,255,0.04);
+      --accent: rgba(255,255,255,0.9);
+      --glow: 0 10px 40px rgba(0,0,0,0.6);
+      --blur-amt: 18px;
+      --transition-speed: 800ms;
+      font-family: "Poppins", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:linear-gradient(180deg,var(--bg-1),var(--bg-2));transition:background var(--transition-speed) ease-in-out;font-synthesis:none;-webkit-font-smoothing:antialiased}
+
+    .app{
+      min-height:100vh;display:grid;place-items:center;position:relative;overflow:hidden;padding:48px;
+    }
+
+    /* Canvas for particles */
+    canvas#particles{position:absolute;inset:0;z-index:0;pointer-events:none;filter:blur(0.3px)}
+
+    .glass{
+      position:relative;z-index:5;width:min(980px,94%);padding:28px;border-radius:20px;background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02));backdrop-filter: blur(12px) saturate(1.08);box-shadow:var(--glow);border:1px solid rgba(255,255,255,0.04);
+    }
+
+    header.top{
+      display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:20px;color:var(--accent)
+    }
+
+    .clock{
+      font-weight:600;font-size:44px;letter-spacing:1px;
+      text-shadow: 0 6px 28px rgba(var(--time-tone),0.12), 0 2px 6px rgba(var(--tone),0.12);
+      transition:color 350ms ease;
+    }
+
+    .date{font-size:14px;opacity:0.7}
+
+    .controls{display:flex;gap:12px;align-items:center}
+
+    input.mood{
+      min-width:220px;padding:12px 14px;border-radius:12px;border:1px solid rgba(255,255,255,0.06);background:linear-gradient(180deg,rgba(255,255,255,0.02), rgba(255,255,255,0.01));color:var(--accent);outline:none;font-size:16px;box-shadow:0 6px 18px rgba(var(--tone),0.06) inset;
+      transition:box-shadow 300ms, transform 200ms;
+    }
+
+    input.mood:focus{transform:translateY(-2px);box-shadow:0 10px 40px rgba(var(--tone),0.12) inset}
+
+    .hint{font-size:13px;opacity:0.75}
+
+    .reflections{
+      position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden;
+    }
+
+    .reflection{
+      position:absolute;padding:10px 18px;border-radius:999px;font-weight:600;color:rgba(255,255,255,0.92);backdrop-filter: blur(6px);filter:blur(2px);opacity:0;transform:translate(-50%,-50%) scale(0.96);white-space:nowrap;box-shadow:0 10px 30px rgba(var(--tone),0.08);
+      transition:opacity 1200ms ease, transform 1200ms ease, filter 1200ms ease;
+      letter-spacing:0.4px;font-size:16px;text-transform:capitalize
+    }
+
+    /* show when active */
+    .reflection.show{opacity:1;filter:blur(0.5px);transform:translate(-50%,-50%) scale(1)}
+
+    .meta{margin-top:12px;color:rgba(255,255,255,0.8);font-size:14px}
+
+    footer.small{margin-top:18px;color:rgba(255,255,255,0.6);font-size:13px}
+
+    /* cursor trail */
+    .trail{
+      position:fixed;left:0;top:0;pointer-events:none;z-index:9;
+    }
+
+    /* subtle neon accent for emotion */
+    .accent-glow{position:absolute;inset:0;z-index:0;mix-blend-mode:screen;opacity:0.28;pointer-events:none}
+
+    /* responsive */
+    @media (max-width:520px){.clock{font-size:34px}.glass{padding:18px}}
+  </style>
+</head>
+<body>
+  <div class="app" id="app">
+    <canvas id="particles"></canvas>
+
+    <div class="reflections" id="reflections"></div>
+
+    <div class="glass">
+      <header class="top">
+        <div>
+          <div class="clock" id="clock">--:--</div>
+          <div class="date" id="date">Loading...</div>
+        </div>
+
+        <div class="controls">
+          <input id="moodInput" class="mood" placeholder="Type one word: happy, tired, calm..." maxlength="24" />
+          <div class="hint">Press Enter to reflect</div>
+        </div>
+      </header>
+
+      <main>
+        <p class="meta">TimeMirror sizning bir so‘z bilan ifodalangan hissiyotingizni havoda suzib yuruvchi xotiralar sifatida aks ettiradi — bu xotiralar vaqt o‘tishi bilan sekin-asta yo‘qoladi. Har bir daqiqada atrof-muhit nozik tarzda o‘zgaradi, go‘yo u sizning joriy kayfiyatingizga mos ravishda o‘zgarayotgandek.</p>
+        <footer class="small">Masalan yozish uchun: ("Xursand" Orzu "Qo'rquv") Faqat inglizcha yozing.</footer>
+      </main>
+
+    </div>
+
+    <div class="accent-glow" id="accentGlow"></div>
+    <div class="trail" id="trail"></div>
+  </div>
+
+  <script>
+    // --- Utility helpers ---
+    const $ = (q)=>document.querySelector(q);
+    const app = $('#app');
+    const reflections = $('#reflections');
+    const clockEl = $('#clock');
+    const dateEl = $('#date');
+    const moodInput = $('#moodInput');
+    const accentGlow = $('#accentGlow');
+
+    // Color mapping (very small sentiment engine)
+    const EMOTION_MAP = {
+      happy: {rgb:[255,179,77], toneName:'warm'},
+      joy:{rgb:[255,200,66]},
+      excited:{rgb:[255,120,80]},
+      calm:{rgb:[140,220,255]},
+      relaxed:{rgb:[150,230,240]},
+      tired:{rgb:[120,120,180]},
+      sad:{rgb:[120,160,220]},
+      angry:{rgb:[220,80,80]},
+      anxious:{rgb:[200,120,180]},
+      bored:{rgb:[130,130,140]},
+      neutral:{rgb:[200,200,200]},
+      love:{rgb:[255,120,170]},
+      surprised:{rgb:[255,210,120]},
+      fearful:{rgb:[90,80,150]},
+      peaceful:{rgb:[170,240,210]},
+      default:{rgb:[140,160,220]}
+    };
+
+    // small synonyms map to handle more inputs
+    const SYNONYMS = {
+      glad:'happy', content:'happy', sleepy:'tired', exhausted:'tired', down:'sad', furious:'angry', nervous:'anxious', calm:'calm', chill:'calm', serene:'peaceful'
+    }
+
+    // Lerp helper
+    function lerp(a,b,t){return a+(b-a)*t}
+
+    // Convert rgb array to css string
+    function rgbToCss(arr){return arr.join(',')}
+
+    // Save/Load from localStorage
+    const STORAGE_KEY = 'timemirror.lastMood';
+    function saveMood(m){ try{localStorage.setItem(STORAGE_KEY,m)}catch(e){} }
+    function loadMood(){ try{return localStorage.getItem(STORAGE_KEY)}catch(e){return null} }
+
+    // initialize
+    let currentEmotion = loadMood() || 'calm';
+    applyEmotion(currentEmotion,false);
+
+    // --- Clock & Time-driven background ---
+    const timeVars = {
+      // target rgb tone depending on time of day
+      targetTimeTone:[30,144,255], // midday blue
+      curTimeTone:[30,144,255]
+    }
+
+    function updateClock(now=new Date()){
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      const ss = String(now.getSeconds()).padStart(2,'0');
+      clockEl.textContent = `${hh}:${mm}:${ss}`;
+      dateEl.textContent = now.toLocaleDateString(undefined,{weekday:'long', month:'short', day:'numeric'});
+
+      // compute time-of-day tone
+      const hour = now.getHours();
+      // morning 5-11: soft yellow, noon 11-15: bright blue, evening 16-19: orange-pink, night 20-4: dark purple
+      let target;
+      if(hour>=5 && hour<11) target = [255,210,120];
+      else if(hour>=11 && hour<16) target = [30,144,255];
+      else if(hour>=16 && hour<20) target = [255,140,110];
+      else target = [80,50,130];
+
+      timeVars.targetTimeTone = target;
+
+      // if minute changed, create a soft blending trigger
+      if(mm !== updateClock._lastMinute){
+        updateClock._lastMinute = mm;
+        createMinutePulse();
+      }
+    }
+    updateClock._lastMinute = null;
+
+    // Smoothly animate CSS variables using rAF
+    let rafId;
+    function animate(){
+      // lerp current time tone
+      for(let i=0;i<3;i++){
+        timeVars.curTimeTone[i] = lerp(timeVars.curTimeTone[i], timeVars.targetTimeTone[i], 0.03);
+      }
+      // compute combined tone with emotion
+      const tone = window._emotionTone || [140,160,220];
+      // blend emotion and time slightly
+      const blended = [
+        Math.round(lerp(timeVars.curTimeTone[0], tone[0], 0.48)),
+        Math.round(lerp(timeVars.curTimeTone[1], tone[1], 0.48)),
+        Math.round(lerp(timeVars.curTimeTone[2], tone[2], 0.48))
+      ];
+
+      // set CSS variables
+      document.documentElement.style.setProperty('--time-tone', `${timeVars.curTimeTone.join(',')}`);
+      document.documentElement.style.setProperty('--tone', `${Math.round(tone[0])},${Math.round(tone[1])},${Math.round(tone[2])}`);
+      document.documentElement.style.setProperty('--bg-1', `rgb(${Math.round(timeVars.curTimeTone[0]*0.18)}, ${Math.round(timeVars.curTimeTone[1]*0.16)}, ${Math.round(timeVars.curTimeTone[2]*0.2)})`);
+      document.documentElement.style.setProperty('--bg-2', `rgb(${Math.round(blended[0]*0.06)}, ${Math.round(blended[1]*0.06)}, ${Math.round(blended[2]*0.07)})`);
+
+      // accent glow gradient
+      accentGlow.style.background = `radial-gradient(600px 300px at 20% 20%, rgba(${blended.join(',')},0.18), transparent 20%), radial-gradient(400px 200px at 80% 80%, rgba(${tone.join(',')},0.12), transparent 20%)`;
+
+      rafId = requestAnimationFrame(animate);
+    }
+    animate();
+
+    // Minute pulse: small glow/weave when minute ticks
+    function createMinutePulse(){
+      const el = document.createElement('div');
+      el.style.position='absolute';el.style.left='50%';el.style.top='50%';el.style.width='20px';el.style.height='20px';el.style.borderRadius='50%';el.style.transform='translate(-50%,-50%)';
+      el.style.pointerEvents='none';el.style.zIndex='2';
+      // use current blended tone
+      const col = window._emotionTone || [140,160,220];
+      el.style.background = `radial-gradient(circle, rgba(${col.join(',')},0.28), transparent 60%)`;
+      el.style.transition='opacity 1200ms ease, transform 1200ms ease';el.style.opacity='1';
+      reflections.appendChild(el);
+      requestAnimationFrame(()=>{el.style.transform='translate(-50%,-50%) scale(18)';el.style.opacity='0'});
+      setTimeout(()=>el.remove(),1400);
+    }
+
+    // --- Emotion handling & reflections ---
+    function analyzeEmotion(word){
+      if(!word) return EMOTION_MAP.default.rgb.slice();
+      const clean = word.trim().toLowerCase();
+      const mapped = SYNONYMS[clean] || clean;
+      if(EMOTION_MAP[mapped]) return EMOTION_MAP[mapped].rgb.slice();
+      // fallback: analyze by simple heuristic (vowels/letters)
+      const positiveWords = ['a','e','i','o','u'];
+      const score = clean.split('').reduce((s,ch)=>s + (positiveWords.includes(ch)?1:-0.4),0);
+      if(score>1) return [255,200,110];
+      if(score<-0.5) return [100,140,200];
+      return [150,170,200];
+    }
+
+    function applyEmotion(word,save=true){
+      const col = analyzeEmotion(word);
+      window._emotionTone = col;
+      // subtle UI adapt
+      document.documentElement.style.setProperty('--tone', `${col.join(',')}`);
+      moodInput.style.boxShadow = `0 12px 40px rgba(${col.join(',')},0.12)`;
+      clockEl.style.color = `rgba(${lerpColor(col,[255,255,255],0.45).join(',')})`;
+      // reflections accent
+      accentGlow.style.opacity = 0.28;
+      // store
+      if(save) saveMood(word);
+    }
+
+    function lerpColor(a,b,t){return [Math.round(lerp(a[0],b[0],t)),Math.round(lerp(a[1],b[1],t)),Math.round(lerp(a[2],b[2],t))]}
+
+    // create a floating reflection
+    function createReflection(text){
+      const el = document.createElement('div');
+      el.className='reflection';
+      el.textContent = text;
+      // random position
+      const w = window.innerWidth; const h = window.innerHeight;
+      const x = Math.random()*w; const y = Math.random()*h;
+      el.style.left = x+'px'; el.style.top = y+'px';
+
+      // color based on current emotion
+      const tone = window._emotionTone || [140,160,220];
+      const bg = `linear-gradient(90deg, rgba(${tone.join(',')},0.18), rgba(${lerpColor(tone,[255,255,255],0.7).join(',')},0.06))`;
+      el.style.background = bg;
+      el.style.border = `1px solid rgba(${tone.join(',')},0.12)`;
+      el.style.color = `rgba(${lerpColor(tone,[255,255,255],0.9).join(',')})`;
+
+      reflections.appendChild(el);
+      // show
+      requestAnimationFrame(()=>el.classList.add('show'));
+
+      // drift animation
+      const dx = (Math.random()-0.5)*120; const dy = (Math.random()-0.5)*120;
+      el.animate([
+        {transform:'translate(-50%,-50%) translate(0px,0px) scale(1)', opacity:1},
+        {transform:`translate(-50%,-50%) translate(${dx}px,${dy}px) scale(0.98)`, opacity:0.0}
+      ],{duration: 16_000 + Math.random()*9000, easing:'ease-in-out'});
+
+      // remove after fade
+      setTimeout(()=>{el.remove()},22000);
+    }
+
+    // handle input
+    moodInput.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){
+        const v = moodInput.value.trim();
+        if(!v) return;
+        applyEmotion(v,true);
+        createReflection(v);
+        moodInput.value = '';
+      }
+    });
+
+    // On load, if last mood exists, reflect it
+    const last = loadMood();
+    if(last){
+      // show a faint initial reflection
+      setTimeout(()=>createReflection(last),420);
+    }
+
+    // --- Particles system ---
+    const canvas = document.getElementById('particles');
+    const ctx = canvas.getContext('2d');
+    let particles = [];
+
+    function resize(){
+      canvas.width = innerWidth * devicePixelRatio;
+      canvas.height = innerHeight * devicePixelRatio;
+      canvas.style.width = innerWidth + 'px';
+      canvas.style.height = innerHeight + 'px';
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    function spawnParticle(x,y,life=120){
+      particles.push({x,y,vx:(Math.random()-0.5)*0.4,vy:(Math.random()-0.5)*0.4,life,age:0,r:1+Math.random()*3});
+    }
+
+    // populate
+    for(let i=0;i<80;i++) spawnParticle(Math.random()*innerWidth, Math.random()*innerHeight, 80+Math.random()*120);
+
+    function drawParticles(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      for(let i=particles.length-1;i>=0;i--){
+        const p = particles[i];
+        p.x += p.vx; p.y += p.vy; p.age += 1;
+        const lifeRatio = 1 - (p.age / p.life);
+        if(lifeRatio <= 0){ particles.splice(i,1); continue; }
+        // color influenced by emotion+time
+        const base = window._emotionTone || [140,160,220];
+        const timeT = timeVars.curTimeTone;
+        const col = lerpColor(base, timeT, 0.4);
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r,0,Math.PI*2);
+        ctx.fillStyle = `rgba(${col.join(',')},${0.08 + 0.18*lifeRatio})`;
+        ctx.fill();
+        // regenerate occasional
+        if(Math.random()<0.002) spawnParticle(Math.random()*innerWidth, Math.random()*innerHeight, 60+Math.random()*120);
+      }
+    }
+
+    // --- Cursor trail (DOM) ---
+    const trailContainer = $('#trail');
+    let trailDots = [];
+    function createTrail(x,y){
+      const d = document.createElement('div');
+      d.style.position='absolute';d.style.left=(x-6)+'px';d.style.top=(y-6)+'px';d.style.width='12px';d.style.height='12px';d.style.borderRadius='50%';d.style.pointerEvents='none';d.style.opacity='0.9';
+      d.style.transform='scale(1)';
+      const col = window._emotionTone || [140,160,220];
+      d.style.background = `radial-gradient(circle, rgba(${col.join(',')},0.95), rgba(${lerpColor(col,[255,255,255],0.8).join(',')},0.25))`;
+      d.style.boxShadow = `0 6px 26px rgba(${col.join(',')},0.12)`;
+      trailContainer.appendChild(d);
+      trailDots.push(d);
+      setTimeout(()=>{d.style.transition='transform 700ms ease, opacity 900ms ease';d.style.transform='scale(2)';d.style.opacity='0';},20);
+      setTimeout(()=>{d.remove(); trailDots = trailDots.filter(x=>x!==d)},900);
+    }
+
+    // Mouse movement
+    addEventListener('mousemove', (e)=>{
+      createTrail(e.clientX, e.clientY);
+      // occasionally spawn a small particle near cursor
+      if(Math.random() < 0.15) spawnParticle(e.clientX + (Math.random()-0.5)*20, e.clientY + (Math.random()-0.5)*20, 30 + Math.random()*40);
+    },{passive:true});
+
+    // --- Main render loop ---
+    function tick(){
+      drawParticles();
+      requestAnimationFrame(tick);
+    }
+    tick();
+
+    // update clock every second
+    setInterval(()=>updateClock(new Date()),1000);
+    updateClock(new Date());
+
+    // keep animate rAF alive to blend CSS variables
+    // (already started earlier)
+
+    // --- small helpers to allow clicking anywhere to focus input ---
+    app.addEventListener('click', (e)=>{ if(e.target === app || e.target === document.body) moodInput.focus(); });
+
+    // expose for debugging
+    window.TimeMirror = {applyEmotion, createReflection};
+  </script>
+</body>
+</html>
